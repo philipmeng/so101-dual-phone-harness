@@ -9,6 +9,40 @@ the controller, phone receivers, local dashboards, an SO-101 model, and offline
 regression tests. Local calibrations, phone identifiers, logs, credentials, and
 machine-specific configuration are not included.
 
+## One dashboard for both arms
+
+The combined dashboard shows both phone connections, tracking, B1 state, A3 gripper
+input, and XYZ phone travel. Each arm has its own pause and supported-release
+controls. It reuses the existing receivers and controllers; it never opens serial
+ports, discovers phones, starts motor sessions, or changes motion tuning.
+
+With both receivers running on the Pi, start the dashboard in another terminal:
+
+```bash
+python harness/dual_dashboard.py --config config.toml
+```
+
+Forward just the combined dashboard to your computer (replace the SSH destination):
+
+```bash
+ssh -N -L 8767:127.0.0.1:8767 user@your-pi
+```
+
+Open **http://127.0.0.1:8767/**. The individual receiver dashboards remain available
+on their configured ports. The combined page is bound to loopback and uses the SSH
+tunnel; it is not a public internet control endpoint.
+
+Alternatively, run the combined dashboard on your computer and forward both
+receiver ports there. Omitting `--config` uses the default phone names and ports
+8766 (follower 1) and 8765 (follower 2). The dashboard itself uses only Python's
+standard library; it needs none of the motor/HEBI dependencies.
+
+If a receiver is unreachable, its card shows **motor state unknown**. A sent
+command is acknowledged as a request, not as confirmation that the arm stopped.
+The underlying controller status is authoritative. Release B1 before resuming
+from a pause. See the session startup steps below to start a controller that has
+ended; opening this page never enables motors.
+
 ## Controls
 
 | Input | Action |
