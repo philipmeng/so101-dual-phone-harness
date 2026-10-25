@@ -1,0 +1,18 @@
+# Copy to config.toml and use your own USB identities and calibration files.
+# Paths are relative to this configuration file. config.toml is gitignored.
+state_dir = ".state"
+urdf = "models/SO101/so101_new_calib.urdf"
+
+[arms.follower_1]
+family = "HEBI"
+name = "mobileIO-follower1"
+dashboard_port = 8766
+serial_port = "/dev/serial/by-id/REPLACE_WITH_FIRST_ARM_ADAPTER"
+calibration = "calibration/follower_1.json"
+
+[arms.follower_2]
+family = "HEBI"
+name = "mobileIO"
+dashboard_port = 8765
+serial_port = "/dev/serial/by-id/REPLACE_WITH_SECOND_ARM_ADAPTER"
+calibration = "calibration/follower_2.json"

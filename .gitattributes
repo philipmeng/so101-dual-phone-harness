@@ -1,0 +1,3 @@
+# Preserve upstream model bytes, including original XML whitespace.
+models/SO101/** -whitespace
+*.stl binary

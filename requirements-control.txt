@@ -1,0 +1,18 @@
+# Control dependencies tested with Python 3.12 on Raspberry Pi 5 (64-bit Linux).
+# LeRobot itself is installed separately with --no-deps; see README.
+numpy==2.2.6
+scipy==1.18.1
+hebi-py==2.11.0
+placo==0.9.15
+# Keep Placo/Pinocchio's native-library ABI aligned with the tested wheels.
+cmeel-urdfdom==4.0.1
+cmeel-tinyxml2==10.0.0
+eiquadprog==1.2.9
+pyserial==3.5
+feetech-servo-sdk==1.0.0
+draccus==0.11.6
+deepdiff==9.1.0
+torch==2.10.0
+packaging==26.3
+tqdm==4.70.1
+huggingface-hub==2.3.0
