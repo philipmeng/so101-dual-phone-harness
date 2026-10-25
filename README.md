@@ -13,13 +13,15 @@ machine-specific configuration are not included.
 
 The combined dashboard shows both phone connections, tracking, B1 state, A3 gripper
 input, and XYZ phone travel. Each arm has its own pause and supported-release
-controls. It reuses the existing receivers and controllers; it never opens serial
-ports, discovers phones, starts motor sessions, or changes motion tuning.
+controls, plus an optional **Reset session** button. It reuses the existing receivers
+and never opens serial ports or discovers phones itself. Reset starts a fresh
+controller with the same motion tuning.
 
-With both receivers running on the Pi, start the dashboard in another terminal:
+With both receivers running on the Pi, start the dashboard in another terminal,
+using the same Python environment as the controllers:
 
 ```bash
-python harness/dual_dashboard.py --config config.toml
+python harness/dual_dashboard.py --config config.toml --manage-sessions
 ```
 
 Forward just the combined dashboard to your computer (replace the SSH destination):
@@ -41,7 +43,32 @@ If a receiver is unreachable, its card shows **motor state unknown**. A sent
 command is acknowledged as a request, not as confirmation that the arm stopped.
 The underlying controller status is authoritative. Release B1 before resuming
 from a pause. See the session startup steps below to start a controller that has
-ended; opening this page never enables motors.
+ended. Opening this page never enables motors.
+
+### Reset an arm from the page
+
+Expand **Reset or end this session** on that arm's card. Support the arm, check
+that its base is secure and the workspace is clear, release B1, and center A3.
+Tick the confirmation and click **Reset session**, beside the release button.
+The page shows progress as it releases the old session, waits for its controller
+lock to become free, and starts a new controller. The arm stays off until a fresh
+B1 release/press; an offline phone leaves the new session waiting for reconnection.
+A reset also starts a session that has already ended.
+
+If release, controller shutdown, or startup cannot be verified, reset reports a
+failure. It never forcibly kills a stuck motor controller or bypasses its startup
+checks. A new process must acquire the per-arm controller lock before opening
+serial. Logs go to that arm's `dashboard-session.log` in its state directory.
+Only the selected arm is reset; shared services and phone receivers are untouched.
+
+`--manage-sessions` must run on the same host, filesystem, and Python environment
+as the controllers. Omit it for a dashboard running on your laptop through receiver
+tunnels; reset will be disabled. An existing installation with a different launch
+command can supply `--session-commands sessions.local.json`, a local JSON object
+mapping exactly `follower_1` and `follower_2` to fixed command argument arrays.
+Commands are read only from this local file, never from browser requests. These
+controllers must use the same state directories/locks and report `controller_pid`
+in their status files, as the included controller does.
 
 ## Controls
 
@@ -51,6 +78,7 @@ ended; opening this page never enables motors.
 | Release **B1** | Hold the arm's current pose; reposition/recenter the phone |
 | Move **A3** while holding B1 | Open or close that arm's gripper |
 | Dashboard **Pause movement** | Pause while retaining the current pose |
+| Dashboard **Reset session** | Release the supported arm and start a fresh session with the same settings |
 | Dashboard **Release motors and end session** | Disable torque and finish the session after you support the arm |
 
 Hold the phone flat, screen up, with its top pointing forward. Motion is based on

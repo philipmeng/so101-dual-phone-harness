@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
 import unittest
+import uuid
+from unittest.mock import Mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -149,6 +151,41 @@ class DashboardTests(unittest.TestCase):
         self.assertTrue(data["arms"][1]["available"])
         self.assertEqual(
             self.request("/api/arms/follower_1/control", {"action": "pause"})[0], 503
+        )
+
+    def test_reset_requires_support_and_idle_phone_and_routes_only_selected_arm(self):
+        sessions = Mock()
+        sessions.snapshot.return_value = dict(busy=False, reset_available=True)
+        sessions.start.return_value = dict(
+            busy=True, phase="starting", message="Starting session"
+        )
+        self.dashboard.sessions = sessions
+        path = "/api/arms/follower_2/control"
+        token = str(uuid.uuid4())
+        request = dict(action="reset", supported=True, request_id=token)
+        self.assertEqual(self.request(path, dict(action="reset"))[0], 400)
+        self.receivers["follower_2"].state["b1"] = True
+        self.assertEqual(self.request(path, request)[0], 409)
+        self.receivers["follower_2"].state.update(b1=False, a3=0.4)
+        self.assertEqual(self.request(path, request)[0], 409)
+        sessions.start.assert_not_called()
+        self.receivers["follower_2"].state["a3"] = 0
+        self.assertEqual(self.request(path, request)[0], 202)
+        sessions.start.assert_called_once_with("follower_2", token)
+        self.assertFalse(self.receivers["follower_1"].commands)
+        self.assertFalse(self.receivers["follower_2"].commands)
+        sessions.snapshot.return_value = dict(busy=True, reset_available=True)
+        self.assertEqual(
+            self.request(path, dict(action="release", supported=True))[0], 409
+        )
+
+    def test_reset_not_configured(self):
+        self.assertEqual(
+            self.request(
+                "/api/arms/follower_1/control",
+                dict(action="reset", supported=True, request_id=str(uuid.uuid4())),
+            )[0],
+            409,
         )
 
     def test_identity_mismatch_blocks_commands(self):

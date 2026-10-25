@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import json
 import math
+import os
 import signal
 import sys
 import termios
@@ -238,6 +239,7 @@ class Session:
                 enabled=self.powered or (self.touched and not self.released),
                 mode=mode,
                 continuous=True,
+                controller_pid=os.getpid(),
                 updated_at=time.time(),
                 fault=self.fault,
                 robot_id=self.robot_id,

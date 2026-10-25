@@ -16,3 +16,6 @@ calibration/
 dist/
 build/
 *.egg-info/
+
+# Local controller launch commands
+sessions.local.json

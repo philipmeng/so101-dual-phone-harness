@@ -23,5 +23,6 @@ jobs:
         run: |
           python harness/phone_control.py --help
           python harness/phone_input_preview.py --help
+          python harness/dual_dashboard.py --help
           python tools/check_arm.py --help
           python -c "from lerobot.motors.feetech import FeetechMotorsBus; from lerobot.motors import MotorCalibration"

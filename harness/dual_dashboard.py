@@ -7,10 +7,12 @@ import json
 from pathlib import Path
 import threading
 import time
+import sys
 from urllib.error import HTTPError
 from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
 from phone_profiles import profile
+from session_reset import SessionReset
 
 ASSETS = Path(__file__).with_name("dashboard")
 ROBOTS = ("follower_1", "follower_2")
@@ -37,8 +39,9 @@ def upstream(port, path, payload=None):
 class DashboardServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, profiles):
+    def __init__(self, address, profiles, sessions=None):
         self.profiles = profiles
+        self.sessions = sessions
         self.command_locks = {robot: threading.Lock() for robot in ROBOTS}
         super().__init__(address, Handler)
 
@@ -50,6 +53,9 @@ class DashboardServer(ThreadingHTTPServer):
             phone_family=p["family"],
             port=p["port"],
             available=False,
+            session=self.sessions.snapshot(robot)
+            if self.sessions
+            else dict(reset_available=False, busy=False),
         )
         try:
             state = upstream(p["port"], "/state")
@@ -137,9 +143,13 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(command, dict) or command.get("action") not in (
                 "pause",
                 "release",
+                "reset",
             ):
-                raise ValueError("Choose pause or release")
-            if command["action"] == "release" and command.get("supported") is not True:
+                raise ValueError("Choose pause, release or reset")
+            if (
+                command["action"] in ("release", "reset")
+                and command.get("supported") is not True
+            ):
                 raise ValueError("Confirm that this arm is supported before releasing")
         except (ValueError, TypeError, OSError) as error:
             self.reply(400, {"error": str(error)})
@@ -150,6 +160,35 @@ class Handler(BaseHTTPRequestHandler):
             arm = self.server.read_arm(robot)
             if not arm["available"]:
                 self.reply(503, {"error": arm["error"]})
+                return
+            if command["action"] == "reset":
+                if self.server.sessions is None:
+                    self.reply(
+                        409,
+                        {"error": "Session reset must be enabled on the Pi dashboard"},
+                    )
+                    return
+                state = arm["state"]
+                if state.get("connected") and (
+                    state.get("b1")
+                    or not isinstance(state.get("a3"), (int, float))
+                    or not abs(state["a3"]) < 0.15
+                ):
+                    self.reply(
+                        409, {"error": "Release B1 and center A3 before resetting"}
+                    )
+                    return
+                try:
+                    job = self.server.sessions.start(robot, command.get("request_id"))
+                except (ValueError, RuntimeError) as error:
+                    self.reply(409, {"error": str(error)})
+                    return
+                self.reply(202, {"message": job["message"], "session": job})
+                return
+            if self.server.sessions and self.server.sessions.snapshot(robot)["busy"]:
+                self.reply(
+                    409, {"error": "This arm is resetting; wait for it to finish"}
+                )
                 return
             try:
                 upstream(arm["port"], "/control", json.dumps(command).encode())
@@ -177,6 +216,16 @@ def main():
         help="Use the harness configuration; defaults to receiver ports 8766/8765",
     )
     parser.add_argument("--port", type=int, default=8767)
+    parser.add_argument(
+        "--manage-sessions",
+        action="store_true",
+        help="Enable supported session resets; run on the Pi with the controller Python environment",
+    )
+    parser.add_argument(
+        "--session-commands",
+        type=Path,
+        help="Optional local JSON mapping of arm IDs to controller command argument lists for an existing installation",
+    )
     args = parser.parse_args()
     if args.config:
         from phone_profiles import load_config
@@ -189,7 +238,42 @@ def main():
         parser.error(
             "Choose a dashboard port from 1024 to 65535 distinct from both receivers"
         )
-    with DashboardServer(("127.0.0.1", args.port), profiles) as server:
+    sessions = None
+    if args.manage_sessions:
+        if not args.config and not args.session_commands:
+            parser.error("Session resets require --config or --session-commands")
+        commands = (
+            json.loads(args.session_commands.read_text())
+            if args.session_commands
+            else {
+                robot: [
+                    sys.executable,
+                    "-u",
+                    str(Path(__file__).with_name("phone_control.py")),
+                    "--robot-id",
+                    robot,
+                    "--config",
+                    str(args.config.resolve()),
+                    "--base-clamped-sweep-clear",
+                ]
+                for robot in ROBOTS
+            }
+        )
+        if set(commands) != set(ROBOTS):
+            parser.error("Configure session commands for exactly both arms")
+        sessions = SessionReset(
+            profiles,
+            commands,
+            Path(__file__).resolve().parents[1],
+            lambda robot: upstream(
+                profiles[robot]["port"],
+                "/control",
+                json.dumps(dict(action="release", supported=True)).encode(),
+            ),
+        )
+    elif args.session_commands:
+        parser.error("--session-commands requires --manage-sessions")
+    with DashboardServer(("127.0.0.1", args.port), profiles, sessions) as server:
         print(f"Both arms: http://127.0.0.1:{server.server_port}/", flush=True)
         try:
             server.serve_forever(poll_interval=0.2)
